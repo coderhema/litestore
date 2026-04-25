@@ -4,19 +4,19 @@ export const runtime = 'nodejs';
 
 type CheckoutStatus = 'success' | 'demo-checkout';
 
-function buildCheckoutReturnUrl(siteUrl: string, slug: string, status: CheckoutStatus) {
-  const safeSlug = slug || 'new';
-  const encodedSlug = encodeURIComponent(safeSlug);
+const CANONICAL_SITE_URL = 'https://litestore-eight.vercel.app';
 
-  if (siteUrl.includes('localhost:3000')) {
-    return `http://localhost:3000/store/${encodedSlug}?status=${status}&store=${encodedSlug}`;
-  }
+function resolveSiteUrl(siteUrl?: string) {
+  if (!siteUrl || siteUrl.includes('localhost:3000')) return siteUrl || CANONICAL_SITE_URL;
+  if (siteUrl.includes('litestore-eight.vercel.app')) return CANONICAL_SITE_URL;
+  return siteUrl;
+}
 
-  if (siteUrl.includes('litestore-eight.vercel.app')) {
-    return `https://litestore-eight.vercel.app/store/${encodedSlug}?status=${status}&store=${encodedSlug}`;
-  }
+function buildCallbackUrl(siteUrl: string, slug: string, status: CheckoutStatus) {
+  const safeSlug = encodeURIComponent(slug || 'new');
+  const baseUrl = resolveSiteUrl(siteUrl);
 
-  return `${siteUrl}/store/${encodedSlug}?status=${status}&store=${encodedSlug}`;
+  return `${baseUrl}/api/paystack/callback?slug=${safeSlug}&status=${status}${status === 'demo-checkout' ? '&demo=1' : ''}`;
 }
 
 function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs = 30000) {
@@ -37,9 +37,9 @@ export async function POST(request: Request) {
 
   const secretKey = process.env.PAYSTACK_SECRET_KEY;
   const endpoint = process.env.PAYSTACK_INITIALIZE_URL;
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-  const demoCallbackUrl = buildCheckoutReturnUrl(siteUrl, body.slug || 'new', 'demo-checkout');
-  const successReturnUrl = buildCheckoutReturnUrl(siteUrl, body.slug || 'new', 'success');
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || CANONICAL_SITE_URL;
+  const callbackUrl = buildCallbackUrl(siteUrl, body.slug || 'new', 'success');
+  const demoCallbackUrl = buildCallbackUrl(siteUrl, body.slug || 'new', 'demo-checkout');
 
   if (endpoint && secretKey && body.email && body.amount) {
     try {
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
           email: body.email,
           amount: Math.round(body.amount * 100),
           currency: body.currency || 'NGN',
-          callback_url: successReturnUrl,
+          callback_url: callbackUrl,
           metadata: {
             slug: body.slug,
             title: body.title,
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
         if (authorizationUrl) {
           return NextResponse.json({
             authorization_url: authorizationUrl,
-            callback_url: successReturnUrl,
+            callback_url: callbackUrl,
             checkout_status: 'success' as CheckoutStatus,
             message: 'Paystack checkout initialized.'
           });

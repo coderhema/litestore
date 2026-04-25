@@ -222,6 +222,19 @@ export function CreateStudio() {
         price: draft.price
       };
 
+      const publishResponse = await fetch('/api/stores/publish', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          ...resolvedStore,
+          source: 'client'
+        })
+      });
+
+      if (!publishResponse.ok) {
+        throw new Error('Could not save the published storefront.');
+      }
+
       persistPublishedStore(resolvedStore);
 
       const url = `${window.location.origin}/store/${slug}`;

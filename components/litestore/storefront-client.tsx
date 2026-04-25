@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowRight, Copy, Check } from 'iconoir-react';
 import {
@@ -14,19 +14,21 @@ import {
   type StoreRecord
 } from '@/lib/litestore';
 
-async function readStore(slug: string, checkoutStatus: 'success' | 'demo-checkout' | null, storeSlug: string) {
+async function readStore(slug: string, checkoutStatus: 'success' | 'demo-checkout' | null, storeSlug: string, initialStore: StoreRecord | null) {
   if (typeof window === 'undefined') return null;
+
+  if (initialStore && !checkoutStatus) return initialStore;
 
   const direct = localStorage.getItem(storeStorageKey(slug)) || localStorage.getItem(storeStorageKey(storeSlug));
   const published = JSON.parse(localStorage.getItem(publishedStoresKey()) || '[]') as string[];
   const fallback = published.includes(storeSlug) ? localStorage.getItem(storeStorageKey(storeSlug)) : null;
-  const baseStore = direct || fallback ? (JSON.parse(direct || fallback || 'null') as StoreRecord | null) : null;
+  const baseStore = direct || fallback ? (JSON.parse(direct || fallback || 'null') as StoreRecord | null) : initialStore;
 
   if (checkoutStatus) {
     const successLabel = checkoutStatus === 'success' ? 'Payment successful' : 'Demo checkout successful';
     return {
       ...(baseStore ?? demoStore),
-      id: `checkout-${storeSlug || slug || 'new'}`,
+      id: 'checkout-' + (storeSlug || slug || 'new'),
       slug: storeSlug || slug,
       title: successLabel,
       description:
@@ -50,23 +52,22 @@ const sectionMotion = {
   exit: { opacity: 0, y: 12 }
 };
 
-export function StorefrontClient({ slug }: { slug: string }) {
-  const router = useRouter();
+export function StorefrontClient({ slug, initialStore }: { slug: string; initialStore: StoreRecord | null }) {
   const searchParams = useSearchParams();
   const checkoutStatus = searchParams.get('status') === 'success' || searchParams.get('status') === 'demo-checkout' ? (searchParams.get('status') as 'success' | 'demo-checkout') : null;
   const checkoutStoreSlug = searchParams.get('store') || slug;
   const demoCheckout = checkoutStatus === 'demo-checkout';
   const hasCheckoutStatus = checkoutStatus !== null;
-  const [store, setStore] = useState<StoreRecord | null>(null);
+  const [store, setStore] = useState<StoreRecord | null>(initialStore);
   const [email, setEmail] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
   const [checkoutMessage, setCheckoutMessage] = useState(checkoutStatus === 'success' ? 'Payment confirmed.' : demoCheckout ? 'Demo checkout confirmed.' : '');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialStore);
 
   useEffect(() => {
     let mounted = true;
 
-    readStore(slug, checkoutStatus, checkoutStoreSlug)
+    readStore(slug, checkoutStatus, checkoutStoreSlug, initialStore)
       .then((value) => {
         if (mounted) {
           setStore(value ?? null);
@@ -80,7 +81,7 @@ export function StorefrontClient({ slug }: { slug: string }) {
     return () => {
       mounted = false;
     };
-  }, [checkoutStatus, checkoutStoreSlug, slug]);
+  }, [checkoutStatus, checkoutStoreSlug, initialStore, slug]);
 
   const shareUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
@@ -105,7 +106,7 @@ export function StorefrontClient({ slug }: { slug: string }) {
       return;
     }
 
-    setCheckoutMessage('Preparing Paystack checkout...');
+    setCheckoutMessage('Opening checkout...');
     try {
       const response = await fetch('/api/paystack/initialize', {
         method: 'POST',
@@ -130,11 +131,7 @@ export function StorefrontClient({ slug }: { slug: string }) {
       }
 
       const targetUrl = new URL(redirectUrl, window.location.origin);
-      if (targetUrl.origin === window.location.origin) {
-        router.push((`${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`) as never);
-      } else {
-        window.location.assign(targetUrl.toString());
-      }
+      window.location.assign(targetUrl.toString());
     } catch (error) {
       setCheckoutMessage(error instanceof Error ? error.message : 'Checkout failed.');
     }
