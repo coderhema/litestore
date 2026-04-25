@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Copy, Edit, Trash } from 'iconoir-react';
+import { ArrowRight, Copy, Edit, Trash, Check } from 'iconoir-react';
 import {
   MAX_ARTWORKS,
   buildDemoPublishedStore,
@@ -61,6 +61,7 @@ export function CreateStudio() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [voiceNote, setVoiceNote] = useState('');
+  const [publishModalOpen, setPublishModalOpen] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -69,6 +70,13 @@ export function CreateStudio() {
     const session = readSession();
     setLoginOpen(!session);
     setAuthReady(true);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      mediaRecorderRef.current?.stream?.getTracks().forEach((track) => track.stop());
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
   }, []);
 
   useEffect(() => {
@@ -119,6 +127,7 @@ export function CreateStudio() {
     const url = `${window.location.origin}/store/${nextDraft.slug}`;
     setPublishedUrl(url);
     setStatus('Draft generated and published locally. You can now buy from the storefront.');
+    setPublishModalOpen(true);
     window.history.replaceState({}, '', `/create?published=${nextDraft.slug}`);
   }
 
@@ -213,6 +222,7 @@ export function CreateStudio() {
       setPublishedUrl(url);
       setDraft((current) => ({ ...current, slug }));
       setStatus('Published. Share the storefront with collectors.');
+      setPublishModalOpen(true);
       window.history.replaceState({}, '', `/create?published=${slug}`);
     } catch (error) {
       setLastError(error instanceof Error ? error.message : 'Could not publish the store.');
@@ -608,19 +618,33 @@ export function CreateStudio() {
                           <button
                             type="button"
                             onClick={() => void handleGenerate()}
-                            disabled={!artworks.length || isGenerating}
-                            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-medium text-zinc-950 transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={!artworks.length || isGenerating || isPublishing}
+                            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#f2e0a7] px-5 py-3 text-sm font-medium text-zinc-950 transition hover:-translate-y-0.5 hover:bg-[#f6e8bf] disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {isGenerating ? 'Generating draft...' : 'Generate AI draft'}
+                            {isGenerating ? (
+                              <span className="inline-flex items-center gap-2">
+                                <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-950/20 border-t-zinc-950" />
+                                Redrafting...
+                              </span>
+                            ) : (
+                              'Redraft'
+                            )}
                           </button>
 
                           <button
                             type="button"
                             onClick={() => void handlePublish()}
-                            disabled={!artworks.length || isPublishing}
-                            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white/80 transition hover:border-white/20 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={!artworks.length || isPublishing || isGenerating}
+                            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-medium text-zinc-950 transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {isPublishing ? 'Publishing...' : 'Publish storefront'}
+                            {isPublishing ? (
+                              <span className="inline-flex items-center gap-2">
+                                <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-950/20 border-t-zinc-950" />
+                                Publishing...
+                              </span>
+                            ) : (
+                              'Publish storefront'
+                            )}
                           </button>
                         </div>
                       </div>
@@ -751,6 +775,39 @@ export function CreateStudio() {
           ) : null}
         </div>
       </section>
+
+      {publishModalOpen && publishedUrl ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
+          <div className="w-full max-w-xl rounded-[2rem] border border-white/10 bg-[#0d0b14] p-5 text-white shadow-2xl sm:p-7">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs uppercase tracking-[0.28em] text-emerald-100">
+                  <Check className="h-4 w-4" /> Published
+                </div>
+                <h2 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-white">Storefront is live</h2>
+                <p className="mt-3 text-sm leading-7 text-white/72">Your storefront has been saved and is ready to share or open. Collectors can now buy from the published route.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPublishModalOpen(false)}
+                className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/70 transition hover:bg-white/10"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-6 rounded-[1.5rem] border border-white/10 bg-black/25 p-4">
+              <p className="text-xs uppercase tracking-[0.3em] text-white/45">Share link</p>
+              <p className="mt-3 break-all text-sm leading-7 text-white/80">{publishedUrl}</p>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              <a href={publishedUrl} target="_blank" rel="noreferrer" className="inline-flex flex-1 items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-medium text-zinc-950">Open storefront</a>
+              <button type="button" onClick={() => void handleCopy(publishedUrl)} className="inline-flex flex-1 items-center justify-center rounded-full border border-white/10 bg-[#f2e0a7] px-5 py-3 text-sm font-medium text-zinc-950">Copy link</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <LoginModal
         open={loginOpen}
