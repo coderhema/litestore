@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { demoStore } from '@/lib/litestore';
-import { getPublishedStoreSnapshot, markPublishedStoreVerified } from '@/lib/litestore-server';
+import { getPublishedStoreSnapshot, markPublishedStoreVerified } from '../../../../lib/litestore-server';
 
 export const runtime = 'nodejs';
 

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { StorefrontClient } from '@/components/litestore/storefront-client';
 import { demoStore, type StoreRecord } from '@/lib/litestore';
-import { getPublishedStoreSnapshot, snapshotToStoreRecord } from '@/lib/litestore-server';
+import { getPublishedStoreSnapshot, snapshotToStoreRecord } from '../../../lib/litestore-server';
 
 export const dynamic = 'force-dynamic';
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { buildPublishedStoreSnapshot, savePublishedStoreSnapshot } from '@/lib/litestore-server';
+import { buildPublishedStoreSnapshot, savePublishedStoreSnapshot } from '../../../../lib/litestore-server';
 import type { StoreRecord } from '@/lib/litestore';
 
 export const runtime = 'nodejs';
