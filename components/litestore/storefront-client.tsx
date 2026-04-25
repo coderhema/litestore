@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowRight, Copy, Check } from 'iconoir-react';
 import {
@@ -16,20 +16,17 @@ import {
 
 async function readStore(slug: string, checkoutStatus: 'success' | 'demo-checkout' | null, storeSlug: string) {
   if (typeof window === 'undefined') return null;
-  const direct = localStorage.getItem(storeStorageKey(slug)) || localStorage.getItem(storeStorageKey(storeSlug));
-  if (direct) return JSON.parse(direct) as StoreRecord;
 
+  const direct = localStorage.getItem(storeStorageKey(slug)) || localStorage.getItem(storeStorageKey(storeSlug));
   const published = JSON.parse(localStorage.getItem(publishedStoresKey()) || '[]') as string[];
-  if (published.includes(storeSlug)) {
-    const fallback = localStorage.getItem(storeStorageKey(storeSlug));
-    if (fallback) return JSON.parse(fallback) as StoreRecord;
-  }
+  const fallback = published.includes(storeSlug) ? localStorage.getItem(storeStorageKey(storeSlug)) : null;
+  const baseStore = direct || fallback ? (JSON.parse(direct || fallback || 'null') as StoreRecord | null) : null;
 
   if (checkoutStatus) {
     const successLabel = checkoutStatus === 'success' ? 'Payment successful' : 'Demo checkout successful';
     return {
-      ...demoStore,
-      id: `checkout-${storeSlug || 'new'}`,
+      ...(baseStore ?? demoStore),
+      id: `checkout-${storeSlug || slug || 'new'}`,
       slug: storeSlug || slug,
       title: successLabel,
       description:
@@ -40,6 +37,8 @@ async function readStore(slug: string, checkoutStatus: 'success' | 'demo-checkou
       artistName: 'Litestore checkout mode'
     } satisfies StoreRecord;
   }
+
+  if (baseStore) return baseStore;
 
   if (demoStore.slug === slug) return demoStore;
   return null;
@@ -52,6 +51,7 @@ const sectionMotion = {
 };
 
 export function StorefrontClient({ slug }: { slug: string }) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const checkoutStatus = searchParams.get('status') === 'success' || searchParams.get('status') === 'demo-checkout' ? (searchParams.get('status') as 'success' | 'demo-checkout') : null;
   const checkoutStoreSlug = searchParams.get('store') || slug;
@@ -129,7 +129,12 @@ export function StorefrontClient({ slug }: { slug: string }) {
         throw new Error(payload.message || 'Checkout could not be started.');
       }
 
-      window.location.href = redirectUrl;
+      const targetUrl = new URL(redirectUrl, window.location.origin);
+      if (targetUrl.origin === window.location.origin) {
+        router.push((`${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`) as never);
+      } else {
+        window.location.assign(targetUrl.toString());
+      }
     } catch (error) {
       setCheckoutMessage(error instanceof Error ? error.message : 'Checkout failed.');
     }
