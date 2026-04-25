@@ -1,7 +1,10 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { StorefrontClient } from '@/components/litestore/storefront-client';
-import { demoStore } from '@/lib/litestore';
+import { demoStore, type StoreRecord } from '@/lib/litestore';
+import { getPublishedStoreSnapshot, snapshotToStoreRecord } from '@/lib/litestore-server';
+
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
@@ -20,5 +23,12 @@ export default async function StorefrontPage({ params }: { params: Promise<{ slu
     notFound();
   }
 
-  return <StorefrontClient slug={slug} />;
+  const publishedSnapshot = await getPublishedStoreSnapshot(slug);
+  const initialStore: StoreRecord | null = publishedSnapshot
+    ? snapshotToStoreRecord(publishedSnapshot)
+    : demoStore.slug === slug
+      ? demoStore
+      : null;
+
+  return <StorefrontClient slug={slug} initialStore={initialStore} />;
 }
