@@ -14,27 +14,30 @@ import {
   type StoreRecord
 } from '@/lib/litestore';
 
-async function readStore(slug: string, demoCheckout: boolean) {
+async function readStore(slug: string, checkoutStatus: 'success' | 'demo-checkout' | null, storeSlug: string) {
   if (typeof window === 'undefined') return null;
-  const direct = localStorage.getItem(storeStorageKey(slug));
+  const direct = localStorage.getItem(storeStorageKey(slug)) || localStorage.getItem(storeStorageKey(storeSlug));
   if (direct) return JSON.parse(direct) as StoreRecord;
 
   const published = JSON.parse(localStorage.getItem(publishedStoresKey()) || '[]') as string[];
-  if (published.includes(slug)) {
-    const fallback = localStorage.getItem(storeStorageKey(slug));
+  if (published.includes(storeSlug)) {
+    const fallback = localStorage.getItem(storeStorageKey(storeSlug));
     if (fallback) return JSON.parse(fallback) as StoreRecord;
   }
 
-  if (demoCheckout) {
+  if (checkoutStatus) {
+    const successLabel = checkoutStatus === 'success' ? 'Payment successful' : 'Demo checkout successful';
     return {
       ...demoStore,
-      id: 'demo-checkout-store',
-      slug: 'new',
-      title: 'Demo checkout successful',
+      id: `checkout-${storeSlug || 'new'}`,
+      slug: storeSlug || slug,
+      title: successLabel,
       description:
-        'This is the hackathon demo success state. The payment flow completed and the storefront is ready for collectors to continue browsing.',
-      testimonial: 'Paystack demo checkout completed successfully.',
-      artistName: 'Litestore demo mode'
+        checkoutStatus === 'success'
+          ? 'Payment confirmation returned from Paystack. The storefront is ready for collectors to continue browsing.'
+          : 'This is the hackathon demo success state. The payment flow completed and the storefront is ready for collectors to continue browsing.',
+      testimonial: checkoutStatus === 'success' ? 'Paystack checkout completed successfully.' : 'Paystack demo checkout completed successfully.',
+      artistName: 'Litestore checkout mode'
     } satisfies StoreRecord;
   }
 
@@ -50,17 +53,20 @@ const sectionMotion = {
 
 export function StorefrontClient({ slug }: { slug: string }) {
   const searchParams = useSearchParams();
-  const demoCheckout = searchParams.get('status') === 'demo-checkout';
+  const checkoutStatus = searchParams.get('status') === 'success' || searchParams.get('status') === 'demo-checkout' ? (searchParams.get('status') as 'success' | 'demo-checkout') : null;
+  const checkoutStoreSlug = searchParams.get('store') || slug;
+  const demoCheckout = checkoutStatus === 'demo-checkout';
+  const hasCheckoutStatus = checkoutStatus !== null;
   const [store, setStore] = useState<StoreRecord | null>(null);
   const [email, setEmail] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
-  const [checkoutStatus, setCheckoutStatus] = useState(demoCheckout ? 'Demo checkout confirmed.' : '');
+  const [checkoutMessage, setCheckoutMessage] = useState(checkoutStatus === 'success' ? 'Payment confirmed.' : demoCheckout ? 'Demo checkout confirmed.' : '');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
 
-    readStore(slug, demoCheckout)
+    readStore(slug, checkoutStatus, checkoutStoreSlug)
       .then((value) => {
         if (mounted) {
           setStore(value ?? null);
@@ -74,7 +80,7 @@ export function StorefrontClient({ slug }: { slug: string }) {
     return () => {
       mounted = false;
     };
-  }, [demoCheckout, slug]);
+  }, [checkoutStatus, checkoutStoreSlug, slug]);
 
   const shareUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
@@ -95,11 +101,11 @@ export function StorefrontClient({ slug }: { slug: string }) {
   async function handleCheckout() {
     if (!store) return;
     if (!email.trim()) {
-      setCheckoutStatus('Add an email to continue to checkout.');
+      setCheckoutMessage('Add an email to continue to checkout.');
       return;
     }
 
-    setCheckoutStatus('Preparing Paystack checkout...');
+    setCheckoutMessage('Preparing Paystack checkout...');
     try {
       const response = await fetch('/api/paystack/initialize', {
         method: 'POST',
@@ -113,14 +119,19 @@ export function StorefrontClient({ slug }: { slug: string }) {
         })
       });
 
-      const payload = (await response.json()) as { authorization_url?: string; message?: string };
-      if (!response.ok || !payload.authorization_url) {
+      const payload = (await response.json()) as { authorization_url?: string; callback_url?: string; checkout_status?: 'success' | 'demo-checkout'; message?: string };
+      if (!response.ok) {
         throw new Error(payload.message || 'Checkout could not be started.');
       }
 
-      window.location.href = payload.authorization_url;
+      const redirectUrl = payload.checkout_status === 'demo-checkout' ? payload.callback_url || payload.authorization_url : payload.authorization_url || payload.callback_url;
+      if (!redirectUrl) {
+        throw new Error(payload.message || 'Checkout could not be started.');
+      }
+
+      window.location.href = redirectUrl;
     } catch (error) {
-      setCheckoutStatus(error instanceof Error ? error.message : 'Checkout failed.');
+      setCheckoutMessage(error instanceof Error ? error.message : 'Checkout failed.');
     }
   }
 
@@ -177,8 +188,8 @@ export function StorefrontClient({ slug }: { slug: string }) {
                 demoCheckout ? 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100' : 'border-white/10 bg-white/5 text-white/55'
               }`}
             >
-              {demoCheckout ? <Check className="h-4 w-4" /> : null}
-              {demoCheckout ? 'Demo checkout successful' : 'Newly published'}
+              {hasCheckoutStatus ? <Check className="h-4 w-4" /> : null}
+              {checkoutStatus === 'success' ? 'Payment successful' : demoCheckout ? 'Demo checkout successful' : 'Newly published'}
             </div>
             <h1 className="mt-6 max-w-3xl font-[family-name:var(--font-display)] text-5xl leading-[0.95] text-white sm:text-6xl lg:text-7xl">
               {store.title}
@@ -219,11 +230,13 @@ export function StorefrontClient({ slug }: { slug: string }) {
                 />
               </label>
 
-              {demoCheckout ? (
+              {hasCheckoutStatus ? (
                 <div className="rounded-[1.5rem] border border-emerald-300/20 bg-emerald-300/10 p-4 text-sm text-emerald-50">
-                  <p className="font-medium">Payment successful</p>
+                  <p className="font-medium">{checkoutStatus === 'success' ? 'Payment successful' : 'Demo checkout successful'}</p>
                   <p className="mt-2 leading-6 text-emerald-50/80">
-                    The checkout returned through the official demo callback and the storefront is now in success mode.
+                    {checkoutStatus === 'success'
+                      ? 'The payment returned from Paystack and the storefront is now in success mode.'
+                      : 'The checkout returned through the demo callback and the storefront is now in success mode.'}
                   </p>
                 </div>
               ) : null}
@@ -236,7 +249,7 @@ export function StorefrontClient({ slug }: { slug: string }) {
                 {demoCheckout ? 'Continue demo checkout' : 'Buy print'}
               </button>
 
-              {checkoutStatus ? <p className={`text-sm ${demoCheckout ? 'text-emerald-200' : 'text-white/65'}`}>{checkoutStatus}</p> : null}
+              {checkoutMessage ? <p className={`text-sm ${hasCheckoutStatus ? 'text-emerald-200' : 'text-white/65'}`}>{checkoutMessage}</p> : null}
             </div>
 
             <div className="mt-6 rounded-[1.5rem] border border-white/10 bg-black/25 p-4">

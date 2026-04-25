@@ -131,7 +131,7 @@ export function CreateStudio() {
     window.history.replaceState({}, '', `/create?published=${nextDraft.slug}`);
   }
 
-  async function submitGeneration(requirementsText: string, source: SetupMode) {
+  async function submitGeneration(requirementsText: string, source: SetupMode, generationMode: 'generate' | 'redraft' = 'generate') {
     if (!artworks.length) {
       setLastError('Upload at least one artwork first.');
       return;
@@ -139,7 +139,7 @@ export function CreateStudio() {
 
     setIsGenerating(true);
     setLastError('');
-    setStatus(source === 'voice' ? 'Generating storefront from your voice notes...' : 'Generating storefront copy with NVIDIA NIM...');
+    setStatus(generationMode === 'redraft' ? 'Redrafting storefront with NVIDIA NIM...' : source === 'voice' ? 'Generating storefront from your voice notes...' : 'Generating storefront copy with NVIDIA NIM...');
 
     try {
       const formData = new FormData();
@@ -149,6 +149,12 @@ export function CreateStudio() {
       formData.append('description', draft.description);
       formData.append('requirements', requirementsText);
       formData.append('setupMode', source);
+      formData.append('generationMode', generationMode);
+      formData.append('draftTitle', draft.title);
+      formData.append('draftDescription', draft.description);
+      formData.append('draftPrice', String(draft.price));
+      formData.append('draftSlug', draft.slug);
+      formData.append('redraftIntent', requirementsText);
 
       const response = await fetch('/api/generate-store', {
         method: 'POST',
@@ -192,7 +198,7 @@ export function CreateStudio() {
   }
 
   async function handleGenerate() {
-    await submitGeneration(requirements || voiceTranscript || draft.description, setupMode);
+    await submitGeneration(requirements || voiceTranscript || draft.description, setupMode, 'redraft');
   }
 
   async function handlePublish() {
@@ -243,27 +249,36 @@ export function CreateStudio() {
     setVoiceNote('Transcribing your voice notes with whisper-large-v3...');
 
     try {
-      const formData = new FormData();
-      formData.append('file', new File([blob], 'voice.webm', { type: blob.type || 'audio/webm' }));
+      const tryEndpoints = ['/api/transcribe-voice', '/api/transcribe'];
+      let response: Response | null = null;
 
-      const response = await fetch('/api/transcribe-voice', {
-        method: 'POST',
-        body: formData
-      });
+      for (const endpoint of tryEndpoints) {
+        const formData = new FormData();
+        formData.append('file', new File([blob], 'voice.webm', { type: blob.type || 'audio/webm' }));
+        response = await fetch(endpoint, {
+          method: 'POST',
+          body: formData
+        });
 
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as { message?: string };
-        throw new Error(payload.message || 'Voice transcription failed.');
+        if (response.status !== 404) break;
       }
 
-      const payload = (await response.json()) as { text?: string };
-      const transcript = payload.text?.trim() || '';
+      if (!response) {
+        throw new Error('Voice transcription failed.');
+      }
+
+      const payload = await response.json().catch(async () => ({ message: await response?.text() }));
+      if (!response.ok) {
+        throw new Error((payload as { message?: string }).message || 'Voice transcription failed.');
+      }
+
+      const transcript = ((payload as { text?: string }).text ?? '').trim();
       setVoiceTranscript(transcript);
       setRequirements(transcript);
       setVoiceNote(transcript ? 'Voice notes ready. Review the transcript below.' : 'No speech detected. Try again.');
       if (transcript) {
         setStatus('Voice setup captured. Building the storefront now...');
-        await submitGeneration(transcript, 'voice');
+        await submitGeneration(transcript, 'voice', 'generate');
       } else {
         setStatus('No speech detected in that recording.');
       }
@@ -453,7 +468,7 @@ export function CreateStudio() {
                       <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-4">
                         <p className="text-xs uppercase tracking-[0.3em] text-white/45">Voice setup</p>
                         <p className="mt-2 text-sm leading-6 text-white/65">
-                          Record a short brief for your storefront. whisper-large-v3 transcribes the note, then GLM-4 generates the storefront draft automatically.
+                          Record a short brief for your storefront. whisper-large-v3 transcribes the note, then Llama 3.1 generates the storefront draft automatically.
                         </p>
                         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                           <button
@@ -609,7 +624,7 @@ export function CreateStudio() {
                         <div className="rounded-[1.5rem] border border-white/10 bg-black/25 p-4">
                           <p className="text-xs uppercase tracking-[0.3em] text-white/45">AI draft</p>
                           <p className="mt-3 text-sm leading-7 text-white/68">
-                            Use the AI button to refresh the title, description, price, and slug with NVIDIA NIM using z-ai/glm4.7.
+                            Use the AI button to refresh the title, description, price, and slug with NVIDIA NIM using meta/llama-3.1-8b-instruct.
                           </p>
                           <p className="mt-3 text-sm leading-7 text-white/68">
                             {setupMode === 'voice' ? 'Your voice transcript will be included in the generation prompt.' : 'Your chat brief will be included in the generation prompt.'}

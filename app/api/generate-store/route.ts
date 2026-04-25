@@ -31,10 +31,10 @@ function stripJsonFences(content: string) {
 
 function extractTextField(candidate: string, key: string) {
   const patterns = [
-    new RegExp(`(?:^|[\n,])\s*["']?${key}["']?\s*:\s*["']([^"']+)["']`, 'i'),
-    new RegExp(`(?:^|[\n,])\s*["']?${key}["']?\s*=\s*["']([^"']+)["']`, 'i'),
-    new RegExp(`(?:^|[\n,])\s*["']?${key}["']?\s*:\s*([^\n,}]+)`, 'i'),
-    new RegExp(`(?:^|[\n,])\s*["']?${key}["']?\s*=\s*([^\n,}]+)`, 'i')
+    new RegExp(String.raw`(?:^|[\n,])\s*["']?${key}["']?\s*:\s*["']([^"']+)["']`, 'i'),
+    new RegExp(String.raw`(?:^|[\n,])\s*["']?${key}["']?\s*=\s*["']([^"']+)["']`, 'i'),
+    new RegExp(String.raw`(?:^|[\n,])\s*["']?${key}["']?\s*:\s*([^\n,}]+)`, 'i'),
+    new RegExp(String.raw`(?:^|[\n,])\s*["']?${key}["']?\s*=\s*([^\n,}]+)`, 'i')
   ];
 
   for (const pattern of patterns) {
@@ -49,8 +49,8 @@ function extractTextField(candidate: string, key: string) {
 
 function extractNumberField(candidate: string, key: string) {
   const patterns = [
-    new RegExp(`(?:^|[\n,])\s*["']?${key}["']?\s*:\s*([0-9]+(?:\.[0-9]+)?)`, 'i'),
-    new RegExp(`(?:^|[\n,])\s*["']?${key}["']?\s*=\s*([0-9]+(?:\.[0-9]+)?)`, 'i')
+    new RegExp(String.raw`(?:^|[\n,])\s*["']?${key}["']?\s*:\s*([0-9]+(?:\.[0-9]+)?)`, 'i'),
+    new RegExp(String.raw`(?:^|[\n,])\s*["']?${key}["']?\s*=\s*([0-9]+(?:\.[0-9]+)?)`, 'i')
   ];
 
   for (const pattern of patterns) {
@@ -112,41 +112,61 @@ export async function POST(request: Request) {
   const description = String(formData.get('description') ?? '');
   const requirements = String(formData.get('requirements') ?? description);
   const setupMode = String(formData.get('setupMode') ?? 'chat');
+  const generationMode = String(formData.get('generationMode') ?? 'generate');
+  const redraftIntent = String(formData.get('redraftIntent') ?? '').trim();
+  const draftTitle = String(formData.get('draftTitle') ?? title);
+  const draftDescription = String(formData.get('draftDescription') ?? description);
+  const draftPrice = Number(formData.get('draftPrice') ?? 0);
+  const draftSlug = String(formData.get('draftSlug') ?? '');
 
   const endpointBase = (process.env.NVIDIA_API_URL ?? 'https://integrate.api.nvidia.com/v1').replace(/\/+$/, '');
   const apiKey = process.env.NVIDIA_API_KEY ?? process.env.NVIDIA_NIM_API_KEY ?? process.env.OPENAI_API_KEY;
-  const model = process.env.NVIDIA_MODEL ?? 'z-ai/glm4.7';
+  const model = process.env.NVIDIA_TEXT_MODEL ?? process.env.NVIDIA_MODEL ?? 'meta/llama-3.1-8b-instruct';
 
   if (apiKey) {
     try {
+      const promptContext = {
+        count,
+        title,
+        description,
+        requirements,
+        setupMode,
+        generationMode,
+        redraftIntent,
+        draftTitle,
+        draftDescription,
+        draftPrice,
+        draftSlug,
+        artDirection: 'premium, minimal, gallery-grade, modern, high-conviction, commercially clear'
+      };
+
       const payload = {
         model,
         messages: [
           {
             role: 'system',
             content:
-              'You are a luxury brand director and storefront copywriter. Rewrite raw notes into a high-taste storefront concept. Return only valid JSON with slug, title, description, price, and currency. No prose, no markdown, no explanation. Make the name feel premium, specific, and collectible. Make the description concise, editorial, and confident. Avoid generic AI phrasing, filler words, and overexplaining. If the input is vague, invent a tasteful concept that still matches the brief.'
+              generationMode === 'redraft'
+                ? 'You are a luxury brand director and storefront editor. Transform an existing storefront into a meaningfully improved version. Return only valid JSON with slug, title, description, price, and currency. No prose, no markdown, no explanation. Change the name, structure, and wording when needed to make the storefront feel more premium, more specific, and more commercially credible. Do not lightly paraphrase the existing draft. Reimagine it when that improves the result. Keep the output concise and usable.'
+                : 'You are a luxury brand director and storefront copywriter. Rewrite raw notes into a high-taste storefront concept. Return only valid JSON with slug, title, description, price, and currency. No prose, no markdown, no explanation. Make the name feel premium, specific, and collectible. Make the description concise, editorial, and confident. Avoid generic AI phrasing, filler words, and overexplaining. If the input is vague, invent a tasteful concept that still matches the brief. Prefer polished, commercially usable names and structure over literal rewrites.'
           },
           {
             role: 'user',
-            content: `Transform this brief into a polished storefront draft:\n\n${JSON.stringify({
-              count,
-              title,
-              description,
-              requirements,
-              setupMode,
-              artDirection: 'premium, minimal, gallery-grade, modern, high-conviction, commercially clear',
-              outputRequirements: {
-                slug: 'short kebab-case slug',
-                title: 'better than the raw input',
-                description: '1-2 sentences that feel editorial and high-end',
-                price: 'a sensible integer price in NGN unless the prompt clearly implies otherwise',
-                currency: 'use NGN unless the user asked for another currency'
-              }
-            })}`
+            content:
+              generationMode === 'redraft'
+                ? `Redraft this storefront into a clearly improved version. Respect the user's intent and change the weak parts rather than echoing them back. If the prompt suggests a better concept, name, or price point, use it.\n\n${JSON.stringify({
+                    ...promptContext,
+                    instruction:
+                      'Create a noticeably better storefront draft. Improve the positioning, tighten the description, and choose a stronger title and slug. Keep the final result premium and minimal, but not generic.'
+                  })}`
+                : `Transform this brief into a polished storefront draft:\n\n${JSON.stringify({
+                    ...promptContext,
+                    instruction:
+                      'Create a concise, editorial storefront draft for collectible artwork. Keep the tone premium and clean. Use the requirements to shape the brand voice, title, description, and pricing.'
+                  })}`
           }
         ],
-        temperature: 0.5,
+        temperature: generationMode === 'redraft' ? 0.75 : 0.5,
         max_tokens: 360,
         response_format: { type: 'json_object' }
       };
@@ -167,7 +187,9 @@ export async function POST(request: Request) {
 
         const parsed = parseGeneratedDraft(data.choices?.[0]?.message?.content);
         if (parsed) {
-          const generated = buildFallbackDraft(count, parsed.title ?? title, parsed.description ?? description);
+          const baseTitle = generationMode === 'redraft' ? draftTitle || title : title;
+          const baseDescription = generationMode === 'redraft' ? draftDescription || description : description;
+          const generated = buildFallbackDraft(count, parsed.title ?? baseTitle, parsed.description ?? baseDescription);
           return NextResponse.json({
             ...generated,
             ...parsed,
@@ -187,5 +209,12 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json(buildFallbackDraft(count, title, description));
+  const fallbackTitle = generationMode === 'redraft' ? draftTitle || title : title;
+  const fallbackDescription = generationMode === 'redraft' ? draftDescription || description : description;
+  const fallback = buildFallbackDraft(count, fallbackTitle, fallbackDescription);
+
+  return NextResponse.json({
+    ...fallback,
+    slug: draftSlug ? slugify(draftSlug) : fallback.slug
+  });
 }
