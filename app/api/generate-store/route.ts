@@ -40,6 +40,8 @@ export async function POST(request: Request) {
   const count = Number(formData.get('count') ?? 0);
   const title = String(formData.get('title') ?? '');
   const description = String(formData.get('description') ?? '');
+  const requirements = String(formData.get('requirements') ?? description);
+  const setupMode = String(formData.get('setupMode') ?? 'chat');
 
   const endpointBase = (process.env.NVIDIA_API_URL ?? 'https://integrate.api.nvidia.com/v1').replace(/\/+$/, '');
   const apiKey = process.env.NVIDIA_API_KEY ?? process.env.NVIDIA_NIM_API_KEY ?? process.env.OPENAI_API_KEY;
@@ -61,8 +63,10 @@ export async function POST(request: Request) {
               count,
               title,
               description,
+              requirements,
+              setupMode,
               instruction:
-                'Create a concise, editorial storefront draft for collectible artwork. Keep the tone premium and clean.'
+                'Create a concise, editorial storefront draft for collectible artwork. Keep the tone premium and clean. Use the requirements to shape the brand voice, title, description, and pricing.'
             })
           }
         ],

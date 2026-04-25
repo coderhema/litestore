@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Copy, Edit, Trash } from 'iconoir-react';
 import {
   MAX_ARTWORKS,
@@ -36,15 +36,19 @@ const initialDraft: GeneratedStoreDraft = {
 };
 
 const steps = [
-  { id: 1, title: 'Basics', helper: 'Name your drop and write the short pitch.' },
+  { id: 1, title: 'Setup', helper: 'Pick chat or voice, then describe the store.' },
   { id: 2, title: 'Pricing', helper: 'Pick the currency and starting price.' },
   { id: 3, title: 'Artwork', helper: 'Upload the visuals that will power the storefront.' },
   { id: 4, title: 'Review', helper: 'Generate the AI draft, then publish.' }
 ] as const;
 
+type SetupMode = 'chat' | 'voice';
+
 export function CreateStudio() {
   const [artworks, setArtworks] = useState<ArtworkAsset[]>([]);
   const [draft, setDraft] = useState<GeneratedStoreDraft>(initialDraft);
+  const [requirements, setRequirements] = useState('');
+  const [setupMode, setSetupMode] = useState<SetupMode>('chat');
   const [currentStep, setCurrentStep] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -53,12 +57,25 @@ export function CreateStudio() {
   const [lastError, setLastError] = useState('');
   const [loginOpen, setLoginOpen] = useState(false);
   const [authReady, setAuthReady] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [voiceNote, setVoiceNote] = useState('');
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
 
   useEffect(() => {
     const session = readSession();
     setLoginOpen(!session);
     setAuthReady(true);
   }, []);
+
+  useEffect(() => {
+    if (setupMode === 'voice' && !requirements.trim()) {
+      setStatus('Speak your store requirements and transcribe them into the form.');
+    }
+  }, [requirements, setupMode]);
 
   const share = useMemo(() => {
     if (!publishedUrl) return null;
@@ -90,7 +107,7 @@ export function CreateStudio() {
 
     setIsGenerating(true);
     setLastError('');
-    setStatus('Generating storefront copy with NVIDIA NIM...');
+    setStatus(setupMode === 'voice' ? 'Generating storefront from your voice notes...' : 'Generating storefront copy with NVIDIA NIM...');
 
     try {
       const formData = new FormData();
@@ -98,6 +115,8 @@ export function CreateStudio() {
       formData.append('count', String(artworks.length));
       formData.append('title', draft.title);
       formData.append('description', draft.description);
+      formData.append('requirements', requirements || voiceTranscript || draft.description);
+      formData.append('setupMode', setupMode);
 
       const response = await fetch('/api/generate-store', {
         method: 'POST',
@@ -176,6 +195,81 @@ export function CreateStudio() {
     setStatus('Copied to clipboard.');
   }
 
+  async function transcribeVoiceBlob(blob: Blob) {
+    setIsTranscribing(true);
+    setLastError('');
+    setVoiceNote('Transcribing your voice notes with whisper-large-v3...');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', new File([blob], 'voice.webm', { type: blob.type || 'audio/webm' }));
+
+      const response = await fetch('/api/transcribe-voice', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { message?: string };
+        throw new Error(payload.message || 'Voice transcription failed.');
+      }
+
+      const payload = (await response.json()) as { text?: string };
+      const transcript = payload.text?.trim() || '';
+      setVoiceTranscript(transcript);
+      setRequirements(transcript);
+      setVoiceNote(transcript ? 'Voice notes ready. Review the transcript below.' : 'No speech detected. Try again.');
+      setStatus(transcript ? 'Voice setup captured and ready for storefront generation.' : 'No speech detected in that recording.');
+    } catch (error) {
+      setVoiceNote(error instanceof Error ? error.message : 'Voice transcription failed.');
+      setLastError(error instanceof Error ? error.message : 'Voice transcription failed.');
+    } finally {
+      setIsTranscribing(false);
+    }
+  }
+
+  async function startRecording() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setLastError('Voice recording is not supported on this device.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      chunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        stream.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        mediaRecorderRef.current = null;
+        chunksRef.current = [];
+        void transcribeVoiceBlob(blob);
+      };
+
+      recorder.start();
+      setIsRecording(true);
+      setStatus('Recording your voice setup...');
+      setVoiceNote('Speak naturally. We will transcribe your requirements when you stop.');
+    } catch (error) {
+      setLastError(error instanceof Error ? error.message : 'Could not access microphone.');
+    }
+  }
+
+  function stopRecording() {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') return;
+    recorder.stop();
+    setIsRecording(false);
+  }
+
   function removeArtwork(id: string) {
     setArtworks((current) => current.filter((artwork) => artwork.id !== id));
   }
@@ -203,7 +297,7 @@ export function CreateStudio() {
                 Build your storefront like a Tally survey.
               </h1>
               <p className="mt-4 max-w-2xl text-white/70">
-                Answer a few focused prompts, upload your art, let NVIDIA NIM refine the copy, and publish a premium storefront.
+                Switch between chat and voice, capture your requirements, let NVIDIA NIM shape the copy, and publish a premium storefront.
               </p>
             </div>
             <div className="rounded-full border border-white/10 bg-black/25 px-4 py-2 text-sm text-white/70">
@@ -211,11 +305,26 @@ export function CreateStudio() {
             </div>
           </div>
 
+          <div className="mt-6 flex flex-wrap gap-3 rounded-[1.5rem] border border-white/10 bg-black/20 p-2">
+            {(['chat', 'voice'] as SetupMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => {
+                  setSetupMode(mode);
+                  setStatus(mode === 'voice' ? 'Voice setup enabled. Tap record to speak.' : 'Chat setup enabled. Type your requirements.');
+                }}
+                className={`flex-1 rounded-2xl px-4 py-3 text-sm font-medium transition sm:flex-none ${
+                  setupMode === mode ? 'bg-white text-zinc-950' : 'bg-transparent text-white/70 hover:bg-white/5'
+                }`}
+              >
+                {mode === 'chat' ? 'Chat setup' : 'Voice setup'}
+              </button>
+            ))}
+          </div>
+
           <div className="mt-8 rounded-full border border-white/10 bg-black/25 p-1">
-            <div
-              className="h-2 rounded-full bg-white transition-all"
-              style={{ width: `${(currentStep / steps.length) * 100}%` }}
-            />
+            <div className="h-2 rounded-full bg-white transition-all" style={{ width: `${(currentStep / steps.length) * 100}%` }} />
           </div>
 
           <div className="mt-6 flex flex-wrap gap-2">
@@ -237,22 +346,39 @@ export function CreateStudio() {
             <section className="rounded-[2rem] border border-white/10 bg-black/20 p-5 sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-white/45">
-                    Step {currentStep} of {steps.length}
-                  </p>
-                  <h2 className="mt-2 text-2xl font-[family-name:var(--font-display)] text-white">
-                    {steps[currentStep - 1].title}
-                  </h2>
+                  <p className="text-xs uppercase tracking-[0.3em] text-white/45">Step {currentStep} of {steps.length}</p>
+                  <h2 className="mt-2 text-2xl font-[family-name:var(--font-display)] text-white">{steps[currentStep - 1].title}</h2>
                   <p className="mt-2 text-sm leading-6 text-white/60">{steps[currentStep - 1].helper}</p>
                 </div>
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/60">
-                  Tally style
-                </span>
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/60">Tally style</span>
               </div>
 
               <div className="mt-6 space-y-6">
                 {currentStep === 1 ? (
                   <>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => setSetupMode('chat')}
+                        className={`rounded-[1.5rem] border px-4 py-4 text-left transition ${
+                          setupMode === 'chat' ? 'border-white/20 bg-white/10' : 'border-white/10 bg-white/5 hover:bg-white/7'
+                        }`}
+                      >
+                        <p className="text-xs uppercase tracking-[0.3em] text-white/45">Chat</p>
+                        <p className="mt-2 text-sm text-white/75">Type your store requirements in a short guided prompt.</p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSetupMode('voice')}
+                        className={`rounded-[1.5rem] border px-4 py-4 text-left transition ${
+                          setupMode === 'voice' ? 'border-white/20 bg-white/10' : 'border-white/10 bg-white/5 hover:bg-white/7'
+                        }`}
+                      >
+                        <p className="text-xs uppercase tracking-[0.3em] text-white/45">Voice</p>
+                        <p className="mt-2 text-sm text-white/75">Speak your requirements and turn them into a storefront brief.</p>
+                      </button>
+                    </div>
+
                     <label className="block">
                       <span className="text-sm text-white/65">What should your store be called?</span>
                       <input
@@ -264,15 +390,57 @@ export function CreateStudio() {
                     </label>
 
                     <label className="block">
-                      <span className="text-sm text-white/65">What is the collection about?</span>
+                      <span className="text-sm text-white/65">
+                        {setupMode === 'voice' ? 'Transcribed requirements' : 'What is the collection about?'}
+                      </span>
                       <textarea
                         rows={6}
-                        value={draft.description}
-                        onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
+                        value={requirements}
+                        onChange={(event) => setRequirements(event.target.value)}
                         className="mt-2 w-full rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-white outline-none placeholder:text-white/30 focus:border-white/25"
-                        placeholder="Describe the collection in one or two short paragraphs"
+                        placeholder={setupMode === 'voice' ? 'Tap record, speak, and the transcript will appear here.' : 'Describe the collection in one or two short paragraphs'}
                       />
                     </label>
+
+                    {setupMode === 'voice' ? (
+                      <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-4">
+                        <p className="text-xs uppercase tracking-[0.3em] text-white/45">Voice setup</p>
+                        <p className="mt-2 text-sm leading-6 text-white/65">
+                          Use the microphone to capture your store requirements. The recording is transcribed with whisper-large-v3, then passed to the storefront generator.
+                        </p>
+                        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                          <button
+                            type="button"
+                            onClick={isRecording ? stopRecording : () => void startRecording()}
+                            disabled={isTranscribing}
+                            className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-medium text-zinc-950 transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {isRecording ? 'Stop recording' : 'Start recording'}
+                            <ArrowRight className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVoiceTranscript('');
+                              setRequirements('');
+                              setVoiceNote('');
+                              setStatus('Voice notes cleared. Record again when ready.');
+                            }}
+                            className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white/80 transition hover:border-white/20 hover:bg-white/10"
+                          >
+                            Clear voice notes
+                          </button>
+                        </div>
+                        {voiceNote ? <p className="mt-3 text-sm text-white/68">{voiceNote}</p> : null}
+                      </div>
+                    ) : (
+                      <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-4">
+                        <p className="text-xs uppercase tracking-[0.3em] text-white/45">Chat setup</p>
+                        <p className="mt-2 text-sm leading-6 text-white/65">
+                          This guided prompt helps shape the store description before AI generation.
+                        </p>
+                      </div>
+                    )}
                   </>
                 ) : null}
 
@@ -320,16 +488,8 @@ export function CreateStudio() {
                 {currentStep === 3 ? (
                   <>
                     <label className="flex cursor-pointer flex-col items-center justify-center rounded-[1.75rem] border border-dashed border-white/15 bg-white/5 px-6 py-10 text-center transition hover:border-white/25 hover:bg-white/7">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        onChange={(event) => void handleUpload(event.target.files)}
-                      />
-                      <span className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-black/30 text-2xl text-white/75">
-                        +
-                      </span>
+                      <input type="file" accept="image/*" multiple className="hidden" onChange={(event) => void handleUpload(event.target.files)} />
+                      <span className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-black/30 text-2xl text-white/75">+</span>
                       <span className="mt-4 text-lg font-medium text-white">Drop 1 to 5 artwork images</span>
                       <span className="mt-2 max-w-sm text-sm leading-6 text-white/55">
                         PNG, JPG, or WebP. The images will power the gallery, preview cards, and publish flow.
@@ -395,6 +555,9 @@ export function CreateStudio() {
                           <p className="text-xs uppercase tracking-[0.3em] text-white/45">AI draft</p>
                           <p className="mt-3 text-sm leading-7 text-white/68">
                             Use the AI button to refresh the title, description, price, and slug with NVIDIA NIM using z-ai/glm4.7.
+                          </p>
+                          <p className="mt-3 text-sm leading-7 text-white/68">
+                            {setupMode === 'voice' ? 'Your voice transcript will be included in the generation prompt.' : 'Your chat brief will be included in the generation prompt.'}
                           </p>
 
                           <button
@@ -504,6 +667,13 @@ export function CreateStudio() {
                   {buildShareText({ title: draft.title, slug: slugify(draft.slug || draft.title) })}
                 </p>
               </div>
+
+              {setupMode === 'voice' && voiceTranscript ? (
+                <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
+                  <p className="text-xs uppercase tracking-[0.3em] text-white/45">Voice transcript</p>
+                  <p className="mt-3 text-sm leading-7 text-white/72">{voiceTranscript}</p>
+                </div>
+              ) : null}
             </section>
           </div>
 
@@ -518,11 +688,7 @@ export function CreateStudio() {
                   </p>
                 </div>
                 <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => void handleCopy(share.copyText)}
-                    className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2.5 text-sm text-white transition hover:bg-white/15"
-                  >
+                  <button type="button" onClick={() => void handleCopy(share.copyText)} className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2.5 text-sm text-white transition hover:bg-white/15">
                     <Copy className="h-4 w-4" /> Copy link
                   </button>
                   <a href={share.x} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-full bg-white px-4 py-2.5 text-sm font-medium text-zinc-950">
