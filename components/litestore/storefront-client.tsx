@@ -105,7 +105,7 @@ export function StorefrontClient({ slug }: { slug: string }) {
     return (
       <main className="min-h-screen bg-[linear-gradient(180deg,#05040a_0%,#0d0b15_100%)] text-white">
         <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-white/70">Loading storefront...</div>
+          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 text-white/70 sm:p-8">Loading storefront...</div>
         </div>
       </main>
     );
@@ -115,7 +115,7 @@ export function StorefrontClient({ slug }: { slug: string }) {
     return (
       <main className="min-h-screen bg-[linear-gradient(180deg,#05040a_0%,#0d0b15_100%)] text-white">
         <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
+          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 sm:p-8">
             <p className="text-xs uppercase tracking-[0.35em] text-white/45">Store not found</p>
             <h1 className="mt-4 font-[family-name:var(--font-display)] text-4xl text-white">This storefront is not published yet.</h1>
             <p className="mt-4 max-w-2xl text-white/68">
@@ -130,12 +130,15 @@ export function StorefrontClient({ slug }: { slug: string }) {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(183,146,255,0.14),_transparent_30%),linear-gradient(180deg,#05040a_0%,#090812_38%,#0e0c16_100%)] text-white">
       <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
-        <div className="flex items-center justify-between rounded-full border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-xl">
+        <div className="flex flex-col gap-4 rounded-[2rem] border border-white/10 bg-white/5 p-4 backdrop-blur-xl sm:p-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.35em] text-white/45">Litestore</p>
             <p className="text-sm text-white/74">Public storefront</p>
           </div>
-          <a href="/create" className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-4 py-2 text-sm text-white/75">
+          <a
+            href="/create"
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-black/25 px-4 py-2.5 text-sm text-white/75 transition hover:bg-white/10"
+          >
             Create another store <ArrowRight className="h-4 w-4" />
           </a>
         </div>
@@ -160,7 +163,7 @@ export function StorefrontClient({ slug }: { slug: string }) {
           </div>
 
           <aside className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-6">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.3em] text-white/45">Buy print</p>
                 <h2 className="mt-2 text-2xl font-[family-name:var(--font-display)] text-white">{formatCurrency(store.price, store.currency)}</h2>
@@ -183,7 +186,7 @@ export function StorefrontClient({ slug }: { slug: string }) {
               <button
                 type="button"
                 onClick={() => void handleCheckout()}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-medium text-zinc-950 transition hover:bg-white/90"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-3.5 text-sm font-medium text-zinc-950 shadow-[0_14px_40px_rgba(255,255,255,0.12)] transition hover:-translate-y-0.5 hover:bg-white/90 active:translate-y-0"
               >
                 Buy print
               </button>
@@ -192,7 +195,7 @@ export function StorefrontClient({ slug }: { slug: string }) {
             </div>
 
             <div className="mt-6 rounded-[1.5rem] border border-white/10 bg-black/25 p-4">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.3em] text-white/45">Share</p>
                   <p className="mt-1 text-sm text-white/76">Collectors can repost the drop.</p>
@@ -200,17 +203,27 @@ export function StorefrontClient({ slug }: { slug: string }) {
                 <button
                   type="button"
                   onClick={() => void handleCopy()}
-                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/75"
+                  className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/75 transition hover:bg-white/10"
                 >
                   <Copy className="h-4 w-4" /> Copy
                 </button>
               </div>
               {copyStatus ? <p className="mt-3 text-sm text-emerald-200">{copyStatus}</p> : null}
-              <div className="mt-4 flex flex-wrap gap-3">
-                <a href={share?.x ?? '#'} target="_blank" rel="noreferrer" className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/75">
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                <a
+                  href={share?.x ?? '#'}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex flex-1 items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white/75 transition hover:bg-white/10"
+                >
                   Share on X
                 </a>
-                <a href={share?.whatsapp ?? '#'} target="_blank" rel="noreferrer" className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/75">
+                <a
+                  href={share?.whatsapp ?? '#'}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex flex-1 items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white/75 transition hover:bg-white/10"
+                >
                   Share on WhatsApp
                 </a>
               </div>

@@ -5,6 +5,7 @@ export type ArtworkAsset = {
 };
 
 export type StoreRecord = {
+  id: string;
   slug: string;
   title: string;
   description: string;
@@ -28,6 +29,7 @@ export const MAX_ARTWORKS = 5;
 export const MIN_ARTWORKS = 1;
 
 export const demoStore: StoreRecord = {
+  id: 'demo-aurora-lane',
   slug: 'aurora-lane',
   title: 'Aurora Lane',
   description:
@@ -101,6 +103,10 @@ export function slugify(input: string) {
     .slice(0, 48) || 'new-drop';
 }
 
+export function createStoreId() {
+  return `store-${crypto.randomUUID()}`;
+}
+
 export function formatCurrency(amount: number, currency: string) {
   return new Intl.NumberFormat('en-NG', {
     style: 'currency',
@@ -109,12 +115,13 @@ export function formatCurrency(amount: number, currency: string) {
   }).format(amount);
 }
 
-export function buildShareText(store: Pick<StoreRecord, 'title' | 'slug'>) {
-  return `I just published ${store.title} on Litestore: /store/${store.slug}`;
+export function buildShareText(store: Pick<StoreRecord, 'title'> & { id?: string; slug?: string }) {
+  const identifier = store.id ?? store.slug ?? 'new-drop';
+  return `I just published ${store.title} on Litestore: /store/${identifier}`;
 }
 
-export function storeStorageKey(slug: string) {
-  return `litestore:store:${slug}`;
+export function storeStorageKey(identifier: string) {
+  return `litestore:store:${identifier}`;
 }
 
 export function publishedStoresKey() {
@@ -136,6 +143,7 @@ export function shareLinks(url: string, title: string) {
 export function buildDemoPublishedStore(title: string, description: string, price: number, artworks: ArtworkAsset[]): StoreRecord {
   const resolvedTitle = title.trim() || demoStore.title;
   return {
+    id: createStoreId(),
     slug: slugify(resolvedTitle),
     title: resolvedTitle,
     description: description.trim() || demoStore.description,

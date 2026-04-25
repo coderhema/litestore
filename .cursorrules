@@ -1,0 +1,11 @@
+# Litestore Cursor Rules
+
+- Use Next.js App Router with TypeScript and Tailwind CSS.
+- Keep the UI premium, mobile-first, and responsive.
+- Prefer rounded buttons, soft borders, glassmorphism panels, and clear spacing.
+- Preserve the demo hackathon flow: login/signup stays in IndexedDB and localStorage session state.
+- Keep AI generation routed through the NVIDIA NIM endpoint and the z-ai/glm4.7 model.
+- Store setup should feel like a short Tally-style multi-step chat/form experience.
+- Public storefront routes should remain simple and shareable.
+- Do not introduce unnecessary dependencies or large refactors unless required.
+- Keep environment variables explicit and documented in .env.example.

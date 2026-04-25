@@ -1,6 +1,11 @@
+'use client';
+
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ArrowRight } from 'iconoir-react';
+import { useState } from 'react';
 import { demoStore, landingStats, landingTestimonials, storefrontHighlights } from '@/lib/litestore';
+import { LoginModal } from '@/components/litestore/login-modal';
 
 const floatingArt = [
   {
@@ -21,11 +26,14 @@ const floatingArt = [
 ];
 
 export function LandingPage() {
+  const router = useRouter();
+  const [loginOpen, setLoginOpen] = useState(false);
+
   return (
     <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top,_rgba(183,146,255,0.18),_transparent_30%),linear-gradient(180deg,#05040a_0%,#090812_40%,#0d0b15_100%)] text-stone-100">
       <header className="sticky top-0 z-40 border-b border-white/8 bg-black/25 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-          <Link href="/" className="inline-flex items-center gap-3">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+          <Link href="/" className="inline-flex items-center gap-3 self-start">
             <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-sm font-semibold tracking-[0.28em] text-white/80">
               LS
             </span>
@@ -35,19 +43,20 @@ export function LandingPage() {
             </span>
           </Link>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <Link
               href="/store/aurora-lane"
-              className="hidden rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80 transition hover:bg-white/10 sm:inline-flex"
+              className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white/80 transition hover:bg-white/10"
             >
               View demo
             </Link>
-            <Link
-              href="/create"
-              className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-medium text-zinc-950 transition hover:bg-white/90"
+            <button
+              type="button"
+              onClick={() => setLoginOpen(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-medium text-zinc-950 shadow-[0_14px_40px_rgba(255,255,255,0.12)] transition hover:-translate-y-0.5 hover:bg-white/90 active:translate-y-0"
             >
-              Create store <ArrowRight className="h-4 w-4" />
-            </Link>
+              Get Started <ArrowRight className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </header>
@@ -65,12 +74,13 @@ export function LandingPage() {
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Link
-              href="/create"
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3.5 text-sm font-medium text-zinc-950 transition hover:-translate-y-0.5 hover:bg-white/90"
+            <button
+              type="button"
+              onClick={() => setLoginOpen(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3.5 text-sm font-medium text-zinc-950 transition hover:-translate-y-0.5 hover:bg-white/90 active:translate-y-0"
             >
-              Create your store <ArrowRight className="h-4 w-4" />
-            </Link>
+              Get Started <ArrowRight className="h-4 w-4" />
+            </button>
             <Link
               href="/store/aurora-lane"
               className="inline-flex items-center justify-center gap-2 rounded-full border border-white/12 bg-white/5 px-6 py-3.5 text-sm font-medium text-white/84 transition hover:border-white/20 hover:bg-white/8"
@@ -162,9 +172,13 @@ export function LandingPage() {
                 Gallery, purchase button, and a share loop that keeps the drop moving.
               </h2>
             </div>
-            <Link href="/create" className="inline-flex items-center gap-2 text-sm text-white/80 transition hover:text-white">
+            <button
+              type="button"
+              onClick={() => setLoginOpen(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white/80 transition hover:border-white/20 hover:bg-white/10"
+            >
               Start your store <ArrowRight className="h-4 w-4" />
-            </Link>
+            </button>
           </div>
 
           <div className="mt-8 grid gap-4 md:grid-cols-3">
@@ -176,6 +190,15 @@ export function LandingPage() {
           </div>
         </div>
       </section>
+
+      <LoginModal
+        open={loginOpen}
+        onClose={() => setLoginOpen(false)}
+        onSuccess={() => {
+          setLoginOpen(false);
+          router.push('/create');
+        }}
+      />
     </main>
   );
 }
