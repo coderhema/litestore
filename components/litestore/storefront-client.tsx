@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Copy } from 'iconoir-react';
+import { useSearchParams } from 'next/navigation';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowRight, Copy, Check } from 'iconoir-react';
 import {
   demoStore,
   formatCurrency,
@@ -12,7 +14,7 @@ import {
   type StoreRecord
 } from '@/lib/litestore';
 
-async function readStore(slug: string) {
+async function readStore(slug: string, demoCheckout: boolean) {
   if (typeof window === 'undefined') return null;
   const direct = localStorage.getItem(storeStorageKey(slug));
   if (direct) return JSON.parse(direct) as StoreRecord;
@@ -23,21 +25,42 @@ async function readStore(slug: string) {
     if (fallback) return JSON.parse(fallback) as StoreRecord;
   }
 
+  if (demoCheckout) {
+    return {
+      ...demoStore,
+      id: 'demo-checkout-store',
+      slug: 'new',
+      title: 'Demo checkout successful',
+      description:
+        'This is the hackathon demo success state. The payment flow completed and the storefront is ready for collectors to continue browsing.',
+      testimonial: 'Paystack demo checkout completed successfully.',
+      artistName: 'Litestore demo mode'
+    } satisfies StoreRecord;
+  }
+
   if (demoStore.slug === slug) return demoStore;
   return null;
 }
 
+const sectionMotion = {
+  initial: { opacity: 0, y: 18 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: 12 }
+};
+
 export function StorefrontClient({ slug }: { slug: string }) {
+  const searchParams = useSearchParams();
+  const demoCheckout = searchParams.get('status') === 'demo-checkout';
   const [store, setStore] = useState<StoreRecord | null>(null);
   const [email, setEmail] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
-  const [checkoutStatus, setCheckoutStatus] = useState('');
+  const [checkoutStatus, setCheckoutStatus] = useState(demoCheckout ? 'Demo checkout confirmed.' : '');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
 
-    readStore(slug)
+    readStore(slug, demoCheckout)
       .then((value) => {
         if (mounted) {
           setStore(value ?? null);
@@ -51,7 +74,7 @@ export function StorefrontClient({ slug }: { slug: string }) {
     return () => {
       mounted = false;
     };
-  }, [slug]);
+  }, [demoCheckout, slug]);
 
   const shareUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
@@ -130,7 +153,11 @@ export function StorefrontClient({ slug }: { slug: string }) {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(183,146,255,0.14),_transparent_30%),linear-gradient(180deg,#05040a_0%,#090812_38%,#0e0c16_100%)] text-white">
       <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
-        <div className="flex flex-col gap-4 rounded-[2rem] border border-white/10 bg-white/5 p-4 backdrop-blur-xl sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+        <motion.div
+          {...sectionMotion}
+          transition={{ duration: 0.45, ease: 'easeOut' }}
+          className="flex flex-col gap-4 rounded-[2rem] border border-white/10 bg-white/5 p-4 backdrop-blur-xl sm:p-5 lg:flex-row lg:items-center lg:justify-between"
+        >
           <div>
             <p className="text-xs uppercase tracking-[0.35em] text-white/45">Litestore</p>
             <p className="text-sm text-white/74">Public storefront</p>
@@ -141,12 +168,17 @@ export function StorefrontClient({ slug }: { slug: string }) {
           >
             Create another store <ArrowRight className="h-4 w-4" />
           </a>
-        </div>
+        </motion.div>
 
         <div className="mt-8 grid gap-8 xl:grid-cols-[1.05fr_0.95fr]">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.35em] text-white/55">
-              Newly published
+          <motion.div {...sectionMotion} transition={{ duration: 0.5, ease: 'easeOut', delay: 0.05 }}>
+            <div
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs uppercase tracking-[0.35em] ${
+                demoCheckout ? 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100' : 'border-white/10 bg-white/5 text-white/55'
+              }`}
+            >
+              {demoCheckout ? <Check className="h-4 w-4" /> : null}
+              {demoCheckout ? 'Demo checkout successful' : 'Newly published'}
             </div>
             <h1 className="mt-6 max-w-3xl font-[family-name:var(--font-display)] text-5xl leading-[0.95] text-white sm:text-6xl lg:text-7xl">
               {store.title}
@@ -160,9 +192,13 @@ export function StorefrontClient({ slug }: { slug: string }) {
                 </span>
               ))}
             </div>
-          </div>
+          </motion.div>
 
-          <aside className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-6">
+          <motion.aside
+            {...sectionMotion}
+            transition={{ duration: 0.5, ease: 'easeOut', delay: 0.1 }}
+            className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-6"
+          >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.3em] text-white/45">Buy print</p>
@@ -183,15 +219,24 @@ export function StorefrontClient({ slug }: { slug: string }) {
                 />
               </label>
 
+              {demoCheckout ? (
+                <div className="rounded-[1.5rem] border border-emerald-300/20 bg-emerald-300/10 p-4 text-sm text-emerald-50">
+                  <p className="font-medium">Payment successful</p>
+                  <p className="mt-2 leading-6 text-emerald-50/80">
+                    The checkout returned through the official demo callback and the storefront is now in success mode.
+                  </p>
+                </div>
+              ) : null}
+
               <button
                 type="button"
                 onClick={() => void handleCheckout()}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-3.5 text-sm font-medium text-zinc-950 shadow-[0_14px_40px_rgba(255,255,255,0.12)] transition hover:-translate-y-0.5 hover:bg-white/90 active:translate-y-0"
               >
-                Buy print
+                {demoCheckout ? 'Continue demo checkout' : 'Buy print'}
               </button>
 
-              {checkoutStatus ? <p className="text-sm text-white/65">{checkoutStatus}</p> : null}
+              {checkoutStatus ? <p className={`text-sm ${demoCheckout ? 'text-emerald-200' : 'text-white/65'}`}>{checkoutStatus}</p> : null}
             </div>
 
             <div className="mt-6 rounded-[1.5rem] border border-white/10 bg-black/25 p-4">
@@ -228,39 +273,50 @@ export function StorefrontClient({ slug }: { slug: string }) {
                 </a>
               </div>
             </div>
-          </aside>
+          </motion.aside>
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8 lg:pb-28">
         <div className="grid gap-4 md:grid-cols-3">
-          {store.artworks.map((artwork, index) => (
-            <article key={artwork.id} className={`overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 ${index === 0 ? 'md:col-span-2 md:row-span-2' : ''}`}>
-              <img src={artwork.src} alt={artwork.name} className={`w-full object-cover ${index === 0 ? 'h-[32rem]' : 'h-80'}`} />
-              <div className="flex items-center justify-between gap-3 p-4">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-white/45">Artwork</p>
-                  <p className="mt-1 text-sm text-white">{artwork.name}</p>
+          <AnimatePresence mode="popLayout">
+            {store.artworks.map((artwork, index) => (
+              <motion.article
+                key={artwork.id}
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 16 }}
+                transition={{ duration: 0.45, ease: 'easeOut', delay: index * 0.04 }}
+                className={`overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 ${index === 0 ? 'md:col-span-2 md:row-span-2' : ''}`}
+              >
+                <img src={artwork.src} alt={artwork.name} className={`w-full object-cover ${index === 0 ? 'h-[32rem]' : 'h-80'}`} />
+                <div className="flex items-center justify-between gap-3 p-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-white/45">Artwork</p>
+                    <p className="mt-1 text-sm text-white">{artwork.name}</p>
+                  </div>
+                  <span className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-xs text-white/60">
+                    {demoCheckout ? 'Success state' : 'Available'}
+                  </span>
                 </div>
-                <span className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-xs text-white/60">Available</span>
-              </div>
-            </article>
-          ))}
+              </motion.article>
+            ))}
+          </AnimatePresence>
         </div>
 
         <div className="mt-8 grid gap-4 lg:grid-cols-3">
-          <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-5">
+          <motion.div {...sectionMotion} transition={{ duration: 0.45, ease: 'easeOut' }} className="rounded-[1.75rem] border border-white/10 bg-white/5 p-5">
             <p className="text-xs uppercase tracking-[0.3em] text-white/45">Artist</p>
             <p className="mt-3 text-lg text-white">{store.artistName}</p>
-          </div>
-          <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-5">
+          </motion.div>
+          <motion.div {...sectionMotion} transition={{ duration: 0.45, ease: 'easeOut', delay: 0.05 }} className="rounded-[1.75rem] border border-white/10 bg-white/5 p-5">
             <p className="text-xs uppercase tracking-[0.3em] text-white/45">Published</p>
             <p className="mt-3 text-lg text-white">{new Date(store.publishedAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}</p>
-          </div>
-          <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-5">
+          </motion.div>
+          <motion.div {...sectionMotion} transition={{ duration: 0.45, ease: 'easeOut', delay: 0.1 }} className="rounded-[1.75rem] border border-white/10 bg-white/5 p-5">
             <p className="text-xs uppercase tracking-[0.3em] text-white/45">Proof of taste</p>
             <p className="mt-3 text-lg text-white">{store.testimonial}</p>
-          </div>
+          </motion.div>
         </div>
       </section>
     </main>
