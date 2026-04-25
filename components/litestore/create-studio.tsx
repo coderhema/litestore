@@ -82,6 +82,89 @@ export function CreateStudio() {
     return shareLinks(publishedUrl, draft.title);
   }, [draft.title, publishedUrl]);
 
+  function persistPublishedStore(nextStore: StoreRecord) {
+    localStorage.setItem(storeStorageKey(nextStore.slug), JSON.stringify(nextStore));
+
+    const existingPublished = JSON.parse(localStorage.getItem(publishedStoresKey()) || '[]') as string[];
+    const nextPublished = Array.from(new Set([nextStore.slug, ...existingPublished]));
+    localStorage.setItem(publishedStoresKey(), JSON.stringify(nextPublished));
+  }
+
+  async function applyGeneratedDraft(generated: Partial<GeneratedStoreDraft>) {
+    const nextDraft = {
+      slug: generated.slug ?? slugify(generated.title ?? draft.title),
+      title: generated.title ?? draft.title,
+      description: generated.description ?? draft.description,
+      price: generated.price ?? draft.price,
+      currency: generated.currency ?? draft.currency
+    };
+
+    setDraft((current) => ({ ...current, ...nextDraft }));
+
+    const publishedStore: StoreRecord = {
+      id: 'draft-' + nextDraft.slug,
+      slug: nextDraft.slug,
+      title: nextDraft.title,
+      description: nextDraft.description,
+      price: nextDraft.price,
+      currency: nextDraft.currency,
+      artworks,
+      testimonial: 'A premium storefront generated from your brief.',
+      artistName: 'Litestore creator',
+      publishedAt: new Date().toISOString()
+    };
+
+    persistPublishedStore(publishedStore);
+
+    const url = `${window.location.origin}/store/${nextDraft.slug}`;
+    setPublishedUrl(url);
+    setStatus('Draft generated and published locally. You can now buy from the storefront.');
+    window.history.replaceState({}, '', `/create?published=${nextDraft.slug}`);
+  }
+
+  async function submitGeneration(requirementsText: string, source: SetupMode) {
+    if (!artworks.length) {
+      setLastError('Upload at least one artwork first.');
+      return;
+    }
+
+    setIsGenerating(true);
+    setLastError('');
+    setStatus(source === 'voice' ? 'Generating storefront from your voice notes...' : 'Generating storefront copy with NVIDIA NIM...');
+
+    try {
+      const formData = new FormData();
+      artworks.forEach((artwork) => formData.append('artworks', artwork.src));
+      formData.append('count', String(artworks.length));
+      formData.append('title', draft.title);
+      formData.append('description', draft.description);
+      formData.append('requirements', requirementsText);
+      formData.append('setupMode', source);
+
+      const response = await fetch('/api/generate-store', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Store generation failed.');
+      }
+
+      const generated = (await response.json()) as Partial<GeneratedStoreDraft>;
+      await applyGeneratedDraft(generated);
+    } catch (error) {
+      setDraft((current) => ({
+        ...current,
+        slug: slugify(current.title),
+        title: current.title || 'Untitled collection'
+      }));
+      setLastError(error instanceof Error ? error.message : 'Something went wrong.');
+      setStatus('Using a local draft while the AI endpoint is unavailable.');
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
   async function handleUpload(files: FileList | null) {
     if (!files?.length) return;
 
@@ -100,54 +183,7 @@ export function CreateStudio() {
   }
 
   async function handleGenerate() {
-    if (!artworks.length) {
-      setLastError('Upload at least one artwork first.');
-      return;
-    }
-
-    setIsGenerating(true);
-    setLastError('');
-    setStatus(setupMode === 'voice' ? 'Generating storefront from your voice notes...' : 'Generating storefront copy with NVIDIA NIM...');
-
-    try {
-      const formData = new FormData();
-      artworks.forEach((artwork) => formData.append('artworks', artwork.src));
-      formData.append('count', String(artworks.length));
-      formData.append('title', draft.title);
-      formData.append('description', draft.description);
-      formData.append('requirements', requirements || voiceTranscript || draft.description);
-      formData.append('setupMode', setupMode);
-
-      const response = await fetch('/api/generate-store', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!response.ok) {
-        throw new Error('Store generation failed.');
-      }
-
-      const generated = (await response.json()) as Partial<GeneratedStoreDraft>;
-      setDraft((current) => ({
-        ...current,
-        slug: generated.slug ?? slugify(generated.title ?? current.title),
-        title: generated.title ?? current.title,
-        description: generated.description ?? current.description,
-        price: generated.price ?? current.price,
-        currency: generated.currency ?? current.currency
-      }));
-      setStatus('Draft ready. Review the result, then publish your store.');
-    } catch (error) {
-      setDraft((current) => ({
-        ...current,
-        slug: slugify(current.title),
-        title: current.title || 'Untitled collection'
-      }));
-      setLastError(error instanceof Error ? error.message : 'Something went wrong.');
-      setStatus('Using a local draft while the AI endpoint is unavailable.');
-    } finally {
-      setIsGenerating(false);
-    }
+    await submitGeneration(requirements || voiceTranscript || draft.description, setupMode);
   }
 
   async function handlePublish() {
@@ -171,11 +207,7 @@ export function CreateStudio() {
         price: draft.price
       };
 
-      localStorage.setItem(storeStorageKey(slug), JSON.stringify(resolvedStore));
-
-      const existingPublished = JSON.parse(localStorage.getItem(publishedStoresKey()) || '[]') as string[];
-      const nextPublished = Array.from(new Set([slug, ...existingPublished]));
-      localStorage.setItem(publishedStoresKey(), JSON.stringify(nextPublished));
+      persistPublishedStore(resolvedStore);
 
       const url = `${window.location.origin}/store/${slug}`;
       setPublishedUrl(url);
@@ -219,7 +251,12 @@ export function CreateStudio() {
       setVoiceTranscript(transcript);
       setRequirements(transcript);
       setVoiceNote(transcript ? 'Voice notes ready. Review the transcript below.' : 'No speech detected. Try again.');
-      setStatus(transcript ? 'Voice setup captured and ready for storefront generation.' : 'No speech detected in that recording.');
+      if (transcript) {
+        setStatus('Voice setup captured. Building the storefront now...');
+        await submitGeneration(transcript, 'voice');
+      } else {
+        setStatus('No speech detected in that recording.');
+      }
     } catch (error) {
       setVoiceNote(error instanceof Error ? error.message : 'Voice transcription failed.');
       setLastError(error instanceof Error ? error.message : 'Voice transcription failed.');
@@ -257,7 +294,7 @@ export function CreateStudio() {
       recorder.start();
       setIsRecording(true);
       setStatus('Recording your voice setup...');
-      setVoiceNote('Speak naturally. We will transcribe your requirements when you stop.');
+      setVoiceNote('Speak naturally. Tap stop when you are done.');
     } catch (error) {
       setLastError(error instanceof Error ? error.message : 'Could not access microphone.');
     }
@@ -406,17 +443,19 @@ export function CreateStudio() {
                       <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-4">
                         <p className="text-xs uppercase tracking-[0.3em] text-white/45">Voice setup</p>
                         <p className="mt-2 text-sm leading-6 text-white/65">
-                          Use the microphone to capture your store requirements. The recording is transcribed with whisper-large-v3, then passed to the storefront generator.
+                          Record a short brief for your storefront. whisper-large-v3 transcribes the note, then GLM-4 generates the storefront draft automatically.
                         </p>
                         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                           <button
                             type="button"
                             onClick={isRecording ? stopRecording : () => void startRecording()}
                             disabled={isTranscribing}
-                            className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-medium text-zinc-950 transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
+                            className={`inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-medium transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 ${
+                              isRecording ? 'bg-rose-100 text-rose-950 hover:bg-rose-50' : 'bg-white text-zinc-950 hover:bg-white/90'
+                            }`}
                           >
+                            <span className={`h-2.5 w-2.5 rounded-full ${isRecording ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`} />
                             {isRecording ? 'Stop recording' : 'Start recording'}
-                            <ArrowRight className="h-4 w-4" />
                           </button>
                           <button
                             type="button"
@@ -428,10 +467,16 @@ export function CreateStudio() {
                             }}
                             className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white/80 transition hover:border-white/20 hover:bg-white/10"
                           >
-                            Clear voice notes
+                            Clear
                           </button>
                         </div>
                         {voiceNote ? <p className="mt-3 text-sm text-white/68">{voiceNote}</p> : null}
+                        {voiceTranscript ? (
+                          <div className="mt-4 rounded-[1.25rem] border border-white/10 bg-black/25 p-4">
+                            <p className="text-xs uppercase tracking-[0.3em] text-white/45">Transcript</p>
+                            <p className="mt-3 text-sm leading-7 text-white/72">{voiceTranscript}</p>
+                          </div>
+                        ) : null}
                       </div>
                     ) : (
                       <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-4">
